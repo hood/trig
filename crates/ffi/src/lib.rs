@@ -1,4 +1,4 @@
-//! C ABI for LuaJIT FFI. Every entry point catches panics: unwinding into nvim would abort it.
+//! C ABI (used by trig.nvim through LuaJIT FFI). Every entry point catches panics: unwinding into nvim would abort it.
 use std::cell::RefCell;
 use std::ffi::{CStr, CString, c_char};
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -53,6 +53,14 @@ pub struct TrigStatus {
 pub const FLAG_IGNORE_CASE: u32 = 1;
 pub const FLAG_CASE_SENSITIVE: u32 = 2;
 pub const FLAG_FIXED: u32 = 4;
+
+/// Bumped on any breaking change to this ABI, so callers can refuse a mismatched lib.
+pub const ABI_VERSION: u32 = 1;
+
+#[unsafe(no_mangle)]
+pub extern "C" fn trig_abi_version() -> u32 {
+    ABI_VERSION
+}
 
 #[unsafe(no_mangle)]
 pub extern "C" fn trig_last_error() -> *const c_char {

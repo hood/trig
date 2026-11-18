@@ -49,10 +49,26 @@ enum Cmd {
     /// Fold merge operands and purge tombstoned ids
     Compact,
     Stats,
+    /// Print the path of libtrig (the C ABI lib) shipped next to this binary
+    LibPath,
+}
+
+fn lib_path() -> Result<PathBuf> {
+    let name = if cfg!(target_os = "macos") { "libtrig.dylib" } else { "libtrig.so" };
+    let exe = std::env::current_exe()?.canonicalize()?;
+    let dir = exe.parent().unwrap();
+    [dir.join(name), dir.join("../lib").join(name)]
+        .into_iter()
+        .find(|p| p.is_file())
+        .ok_or_else(|| anyhow::anyhow!("{name} not found next to {}", exe.display()))
 }
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
+    if matches!(cli.cmd, Cmd::LibPath) {
+        println!("{}", lib_path()?.canonicalize()?.display());
+        return Ok(());
+    }
     let root = cli.root.unwrap_or(std::env::current_dir()?);
     let read_only = matches!(cli.cmd, Cmd::Search { .. } | Cmd::Stats);
     let t = Instant::now();
@@ -89,6 +105,7 @@ fn main() -> Result<()> {
             e.update(&path)?;
         }
         Cmd::Compact => e.store.compact()?,
+        Cmd::LibPath => unreachable!(),
         Cmd::Stats => {
             let mut docs = 0;
             e.store.for_each_doc(|_, _| docs += 1)?;

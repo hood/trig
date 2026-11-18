@@ -1,6 +1,6 @@
-# trig.nvim
+# trig
 
-Outrageously fast indexed code search for Neovim. Trigram index in RocksDB, Rust core over LuaJIT FFI, NEON in the hot paths.
+Outrageously fast indexed code search. Trigram index in RocksDB, Rust core, NEON in the hot paths.
 
 Trig keeps a trigram index, so a query only reads files that can actually match, then verifies them with the same line semantics as the almighty `ripgrep` (❤️).
 
@@ -14,54 +14,36 @@ Trig keeps a trigram index, so a query only reads files that can actually match,
 
 (Result sets match `rg -S --hidden` exactly on the queries above)
 
+Ships as a CLI and as `libtrig`, a C ABI lib for editor integrations. Neovim plugin: [trig.nvim](https://github.com/hood/trig.nvim).
+
 ## Install
 
 Needs Rust, cmake and `libclang` (Xcode CLT on macOS). First build compiles RocksDB, takes a few minutes.
 
 ```sh
-git clone https://github.com/hood/trig.nvim ~/src/trig.nvim
-cd ~/src/trig.nvim && cargo build --release
+git clone https://github.com/hood/trig ~/src/trig
+cd ~/src/trig && cargo build --release
 ```
 
-Load it from the clone, since the native lib lives in `target/release`:
-
-```lua
-vim.opt.rtp:append(vim.fn.expand("~/src/trig.nvim"))
-vim.cmd.runtime("plugin/trig.lua")
-vim.keymap.set("n", "F", "<cmd>TrigLive<cr>")
-```
-
-`:TrigLive` needs [fzf.vim](https://github.com/junegunn/fzf.vim).
+`target/release/` then holds the `trig` binary and `libtrig.{dylib,so}`.
 
 ## Usage
 
-| | |
-|---|---|
-| `:TrigLive [query]` | live search in fzf, re-queries the index per keystroke |
-| `:Trig {regex}` | results into quickfix (`:Trig!` = fixed string) |
-| `:TrigIndex [dir]` | build/refresh the index |
-| `:TrigStatus` | index state and DB path |
-
-The git root of cwd gets indexed on startup. After the first run only files whose mtime/size changed are re-read. Saved buffers are re-indexed on `BufWritePost`. Smart case like `rg -S`, `.gitignore` respected, hidden files included, `.git` skipped.
-
-Options:
-
-```lua
-require("trig").setup({
-  auto_index = true,
-  live_max = 2000,  -- hits per keystroke in :TrigLive
-  qf_max = 10000,
-})
-```
-
-There's also a CLI, which `:TrigLive` uses under the hood:
-
 ```sh
 trig index                      # in a repo; DB goes to ~/.cache/nvim/trig/<hash>
-trig search --stats 'foo_(bar|baz)'
+trig search 'foo_(bar|baz)'     # path:line:col:text, like rg --vimgrep
+trig search --stats -F 'a.b'    # fixed string, plan + timings on stderr
+trig update src/main.rs         # reindex one file
 trig stats
 trig compact
+trig lib-path                   # where libtrig lives, for integrations
 ```
+
+Smart case like `rg -S`, `.gitignore` respected, hidden files included, `.git` skipped. After the first `index` only files whose mtime/size changed are re-read.
+
+## C ABI
+
+`crates/ffi` builds `libtrig`: open a handle per root, index in the background, update single files, search into a `path:line:col:text` buffer. Every entry point catches panics. `trig_abi_version()` is bumped on breaking changes so integrations can refuse a mismatched lib.
 
 ## How it works
 
@@ -72,7 +54,7 @@ trig compact
 
 ## Limits
 
-- Files changed outside nvim (e.g. `git checkout`) are picked up on the next startup or `:TrigIndex`, there's no watcher yet.
+- No file watcher yet: changes from outside an integration (e.g. `git checkout`) are picked up on the next `trig index`.
 - While the first index builds, searches only see what's already been flushed.
 - Binary files (NUL in the first 8KB) and files over 64MB aren't indexed.
-- Only tested on macOS/aarch64.
+- Only tested on macOS/aarch64, x86/Linux support is WIP.
